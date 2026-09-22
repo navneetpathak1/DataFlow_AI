@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import Annotated, Literal
 from operator import add
-
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
 
 class AgentSchema(BaseModel):
     messages : Annotated[list,add] = Field(..., description="List of messages to be processed by the agent")
@@ -24,9 +25,14 @@ class ETLAgentSchema(BaseModel):
     messages : Annotated[list,add] = Field(..., description="List of messages to be processed by the ETL agent")
 
 class RouterSchema(BaseModel):
-    answer: Literal["sql","etl"] = Field(..., description="Indicates whether the user's question is related to SQL or ETL operations")
+    answer: Literal["sql", "etl", "rag"] = Field(..., description="Indicates whether the user's question is related to SQL database queries, ETL operations, or RAG (medical/document knowledge retrieval)")
     comments: str = Field(..., description="Additional comments or feedback regarding the classification of the user's question")
 
 class DataAgentSchema(BaseModel):
     messages : Annotated[list,add] = Field(..., description="List of messages to be processed by the Data agent")
-    route_response : str = Field(..., description="The response from the router indicating whether to route to SQL or ETL operations")
+    route_response : str = Field(..., description="The response from the router indicating whether to route to SQL, ETL, or RAG operations")
+
+
+class RAGAgentSchema(BaseModel):
+    messages: Annotated[list[BaseMessage], add_messages] = Field(..., description="List of messages to be processed by the RAG agent")
+
