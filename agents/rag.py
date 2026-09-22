@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_core.tools import tool
+from langchain.tools import tool
 from langgraph.graph import StateGraph, START
 from typing import Annotated, TypedDict
 from langchain_core.messages import HumanMessage, BaseMessage
@@ -18,7 +18,6 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from utils.llm_pick import pick_llm
 from langchain_huggingface import HuggingFaceEmbeddings
 from models.schema import RAGAgentSchema
-
 
 load_dotenv()
 
@@ -56,7 +55,6 @@ else:
 retriever = vector_store.as_retriever(
     search_kwargs={"k": 4}
 )
-
 
 @tool
 def rag_tool(query: str) -> dict:

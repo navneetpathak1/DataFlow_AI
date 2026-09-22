@@ -80,15 +80,16 @@ class DatabaseUtil:
                 connection.close()
 
 
-obj = DatabaseUtil({
-    "host": os.environ['host'],
-    "port": os.environ['port'],
-    "user": os.environ['user'],
-    "password": os.environ['password'],
-    "dbname": os.environ['database']
-})
+if __name__ == "__main__":
+    obj = DatabaseUtil({
+        "host": os.environ.get('host', 'localhost'),
+        "port": os.environ.get('port', 5432),
+        "user": os.environ.get('user', 'postgres'),
+        "password": os.environ.get('password', ''),
+        "dbname": os.environ.get('database', 'postgres')
+    })
 
-result = obj.schema_details("public")
+    result = obj.schema_details("public")
 
-with open("test_schema_details.txt", "w") as f:
-    f.write(result)
+    with open("test_schema_details.txt", "w") as f:
+        f.write(result)

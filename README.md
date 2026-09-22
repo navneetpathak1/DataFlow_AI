@@ -38,6 +38,5 @@
 | **[PyPDF](https://pypdf.readthedocs.io/)** | Document Loader | Parses and extracts text content from PDF reference documents. |
 | **[PostgreSQL](https://www.postgresql.org/)** | Relational Database | Production database storing structured business datasets (users, rides, payments, ratings, vehicles). |
 | **[psycopg2-binary](https://www.psycopg.org/)** | Database Driver | Handles PostgreSQL connections, schema introspection, and analytical query execution. |
-| **[Pandas](https://pandas.pydata.org/)** | Data Engineering | Data normalization (`json_normalize`), filtering, transformation, and CSV/file exports. |
 | **[Pydantic v2](https://docs.pydantic.dev/)** | Validation & Schemas | Type-safe state management, router classification schemas, and safety evaluation contracts. |
 | **[python-dotenv](https://github.com/theskumar/python-dotenv)** | Configuration | Loads sensitive API keys and database credentials securely from environment variables. |
