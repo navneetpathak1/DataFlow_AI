@@ -8,7 +8,8 @@ from utils.database import DatabaseUtil
 from models.schema import AgentSchema, JudgeSchema
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import StateGraph, START, END
-
+from typesafe_sdk import Choice, Noul, Score, TypeSafeClient
+from questions import QUESTIONS, TOPICS
 
 # -------------------------------------- AI Agent Code--------------------------------------
  
@@ -87,6 +88,28 @@ def generate_sql(state: AgentSchema) -> AgentSchema:
 
 # ---------------------- Is Safe Node ----------------------
 
+# Replacing LLL as a judge to JEV by typesafe.ai
+
+client = TypeSafeClient()
+
+MENTION_THRESHOLD = 0.8
+
+# response = client.system_one(
+#     model="jev-latest",
+#     state=,
+#     questions={
+#         "is_safe": Score(
+#             instructions="Determines if the SQL query is safe to execute",
+#             criteria=[
+#                 "Safe: Can only select data",
+#                 "Unsafe: Attempts to modify, delete, or drop data",
+#             ],
+#         ),
+#     },
+# )
+
+#--------------------This one is by JEV-----------------
+
 def is_safe_sql(state: AgentSchema) -> AgentSchema:
 
     sql_query = state.generated_sql_query
@@ -94,21 +117,65 @@ def is_safe_sql(state: AgentSchema) -> AgentSchema:
     llm = pick_llm("medium")  
     llm_judge = llm.with_structured_output(JudgeSchema)
 
-    prompt = f"""
-    You are an SQL Judge for data security. Your task is to determine whether the SQL query is 
-    safe or not. The SQL query should only be used for data retrieval and should not modify the 
-    database in any way. Neither the SQL query nor the prompt should contain any SQL commands that can modify the
-    database, such as INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CREATE, or any other commands that can change
-    the structure or content of the database. If the SQL query is safe, respond with 'Yes' otherwise respond with 
-    'No'. Additionally, provide comments explaining your decision.
-    Here's the SQL query to evaluate:
-    {sql_query}"""
 
-    response = llm_judge.invoke(prompt).model_dump()  # Get the structured output as a dictionary
-    state.is_safe = response['answer']
-    state.comments = response['comments']
+    response = client.system_one(
+    model="jev-latest",
+    state=sql_query,
+    questions={
+        "is_safe": Score(
+            instructions="Determines if the SQL query is safe to execute",
+            criteria=[
+                "Safe: Can only select data",
+                "Unsafe: Attempts to modify, delete, or drop data",
+            ],
+        ),
+    },
+    )
+    
+    score = response.answers["is_safe"].score
+
+    # If the score is above the threshold, the SQL query is safe to execute
+
+    if(score > MENTION_THRESHOLD):
+        state.is_safe = "Yes"
+        state.comments = "The generated SQL query is safe to execute."
+    else:
+        state.is_safe = "No"
+        state.comments = "The generated SQL query is not safe to execute."
 
     return state
+
+
+
+# ------------------This one is by llm----------------------------
+
+# def is_safe_sql(state: AgentSchema) -> AgentSchema:
+
+#     sql_query = state.generated_sql_query
+
+#     llm = pick_llm("medium")  
+#     llm_judge = llm.with_structured_output(JudgeSchema)
+
+#     prompt = f"""
+#     You are an SQL Judge for data security. Your task is to determine whether the SQL query is 
+#     safe or not. The SQL query should only be used for data retrieval and should not modify the 
+#     database in any way. Neither the SQL query nor the prompt should contain any SQL commands that can modify the
+#     database, such as INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CREATE, or any other commands that can change
+#     the structure or content of the database. If the SQL query is safe, respond with 'Yes' otherwise respond with 
+#     'No'. Additionally, provide comments explaining your decision.
+#     Here's the SQL query to evaluate:
+#     {sql_query}"""
+
+#     response = llm_judge.invoke(prompt).model_dump()  # Get the structured output as a dictionary
+    # state.is_safe = response['answer']
+    # state.comments = response['comments']
+
+    # return state
+
+
+# pront(response.answers["frustration"].score)
+
+
 
 
 # Canceled SQL Query Node
