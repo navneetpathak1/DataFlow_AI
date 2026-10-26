@@ -20,8 +20,9 @@ load_dotenv()
 from agents.data_agent import data_agent
 from langchain_core.messages import HumanMessage
 
-HOST = os.environ.get("SERVER_HOST", "127.0.0.1")
-PORT = int(os.environ.get("SERVER_PORT", 8000))
+ 
+HOST = "0.0.0.0"
+PORT = int(os.environ.get("PORT", os.environ.get("SERVER_PORT", "8000")))
 
 
 class DataAgentHandler(BaseHTTPRequestHandler):
@@ -163,7 +164,7 @@ class DataAgentHandler(BaseHTTPRequestHandler):
                     status_text = "Query approved and executed successfully."
                 else:
                     state.final_answer = (
-                        f"❌ The SQL execution was denied by human operator.\n\n"
+                        f"The SQL execution was denied by human operator.\n\n"
                         f"Query that was canceled:\n```sql\n{sql_query}\n```\n"
                         "No database changes were executed."
                     )

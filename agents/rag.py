@@ -565,4 +565,3 @@ if __name__ == "__main__":
         .content.encode("utf-8", errors="replace")
         .decode(sys.stdout.encoding or "utf-8", errors="replace")
     )
-
