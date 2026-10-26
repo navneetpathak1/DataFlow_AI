@@ -6,7 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.llm_pick import pick_llm
 from utils.etl_tools import ETLTools
 from models.schema import ETLAgentSchema
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langchain.tools import tool
 from langchain_groq import ChatGroq
@@ -16,14 +16,14 @@ from langchain_groq import ChatGroq
 
 
 @tool
-def extract_load_tool(url:str, output_folder:str, format:str) -> str:
+def extract_load_tool(url:str, output_folder:str, format:str = "csv") -> str:
     """
-    This tool extracts the data from the API (url) and loads it into the
-    the desired location (output_folder).
+    This tool extracts data from an API or webpage (url) and loads it into the
+    desired location (output_folder or file path).
 
     Args:
-        url (str): The API endpoint from which to extract data.
-        output_folder (str): The folder where the extracted data will be saved.
+        url (str): The API endpoint or webpage from which to extract data.
+        output_folder (str): The folder or file path where the extracted data will be saved.
         format (str): The format in which to save the extracted data (csv, json, parquet).
     
     Returns:
@@ -31,11 +31,11 @@ def extract_load_tool(url:str, output_folder:str, format:str) -> str:
 
     """
     etl_tools = ETLTools()
-    return etl_tools.extract_load(url, output_folder, format)
+    return str(etl_tools.extract_load(url, output_folder, format))
 
 
 @tool
-def transform_load_tool(input_file_path:str,output_folder:str,output_format:str, user_question:str) -> str:
+def transform_load_tool(input_file_path:str, output_folder:str, output_format:str, user_question:str) -> str:
     """
     This tool transforms the data from the specified file and loads it into the
     desired location (output_folder).
@@ -44,6 +44,7 @@ def transform_load_tool(input_file_path:str,output_folder:str,output_format:str,
         input_file_path (str): The path to the file containing the data to be transformed.
         output_folder (str): The folder where the transformed data will be saved.
         output_format (str): The format in which to save the transformed data (csv, json, parquet).
+        user_question (str): The user's question or transformation instruction.
     
     Returns:
         str: A message indicating the success or failure of the operation.
@@ -75,6 +76,9 @@ def transform_load_tool(input_file_path:str,output_folder:str,output_format:str,
     # Optional Cleaning
     pandas_code = response.strip().strip('```').strip().lstrip('python').strip()
 
+    # Ensure output folder exists if it's a directory
+    os.makedirs(output_folder, exist_ok=True)
+
     # Execute the Pandas code
     results = etl_tools.execute_code(pandas_code)
 
@@ -83,7 +87,6 @@ def transform_load_tool(input_file_path:str,output_folder:str,output_format:str,
 
 # Toolkit 
 tools = [extract_load_tool, transform_load_tool]
-
 llm = pick_llm("medium")
 
 # binding tool calls to the LLM 
@@ -92,46 +95,39 @@ llm_bind = llm.bind_tools(tools)
 
 # ---------------------------------------- AGENT GRAPH ---------------------------------------- #
 
-def llm_node(state:ETLAgentSchema):
+def llm_node(state: ETLAgentSchema):
 
     messages = state.messages
 
-    prompt = f"""
-            You are a Python Data Analyst who has access to tools that can extract and load, 
-            transform and load data. You will be provided with a user's question 
-            and you would need to perform the right ETL operations as per the user's question. 
-            If the operation is performed then inform the user and end the coversation.
-            Here's the chat history: {messages}\n
-    """
+    system_prompt = (
+        "You are a Python Data Analyst who has access to tools that can extract and load, "
+        "and transform and load data. You will be provided with a user's question "
+        "and you need to perform the right ETL operations as per the user's question. "
+        "If the operation is performed then inform the user and end the conversation."
+    )
 
-    final_answer = llm_bind.invoke(prompt)
+    final_answer = llm_bind.invoke([SystemMessage(content=system_prompt)] + list(messages))
 
-    state.messages = messages + [final_answer]
-
-    return state
+    return {"messages": [final_answer]}
 
 
-def tool_node(state:ETLAgentSchema):
+def tool_node(state: ETLAgentSchema):
     """
     This node is responsible for invoking the appropriate tool based on the user's question and the context provided by the LLM.
     """
 
     tools_results = []
-
     tools_by_name = {tool.name: tool for tool in tools}
 
-    tool_calls = state.messages[-1].tool_calls
+    last_message = state.messages[-1]
+    tool_calls = getattr(last_message, "tool_calls", [])
 
     for tool_call in tool_calls:
-
         tool = tools_by_name[tool_call['name']]
         observation = tool.invoke(tool_call['args'])
+        tools_results.append(ToolMessage(content=str(observation), tool_call_id=tool_call['id']))
 
-        tools_results.append(ToolMessage(content=observation, tool_call_id = tool_call['id']))
-
-    state.messages = state.messages + tools_results
-
-    return state   
+    return {"messages": tools_results}   
 
 
 # Nodes & Edges
@@ -141,8 +137,9 @@ etl_analyst_graph.add_node("tool_node", tool_node)
 
 etl_analyst_graph.add_edge(START, "llm_node")
 
-def is_tool_call(state:ETLAgentSchema):
-    tool_calls = state.messages[-1].tool_calls
+def is_tool_call(state: ETLAgentSchema):
+    last_message = state.messages[-1]
+    tool_calls = getattr(last_message, "tool_calls", [])
 
     if tool_calls:
         return "tool_node"
@@ -150,7 +147,7 @@ def is_tool_call(state:ETLAgentSchema):
         return "end"
 
 etl_analyst_graph.add_conditional_edges(
-    "llm_node",is_tool_call,
+    "llm_node", is_tool_call,
     {
         "tool_node": "tool_node",
         "end": END
@@ -163,24 +160,26 @@ etl_analyst = etl_analyst_graph.compile()
 
 if __name__ == "__main__":
     # Compile the Graph
-    
 
     # Optional
-    from IPython.display import display, Image
-    img = Image(etl_analyst.get_graph().draw_mermaid_png())
-    with open("etl_analyst_graph.png", "wb") as f:
-        f.write(img.data)
-
-    # response = etl_analyst.invoke(
-    #     {"messages":[HumanMessage(content="I want to extract the data from the API endpoint 'https://pokeapi.co/api/v2/pokemon' and save it to data/extract folder in the csv folder")]}
-    # )
+    try:
+        from IPython.display import display, Image
+        img = Image(etl_analyst.get_graph().draw_mermaid_png())
+        with open("etl_analyst_graph.png", "wb") as f:
+            f.write(img.data)
+    except Exception as e:
+        print(f"Could not save graph image: {e}")
 
     response = etl_analyst.invoke(
-         {"messages":[HumanMessage(content=f"""
-            I want to transform the data stored in the 'C:\\js\\genAI\\dataAgent\\data\\extract\\extracted_data.csv' file 
-            and save the transformed data in the 'C:\\js\\genAI\\dataAgent\\data\\transform' folder in the csv format.
-            The transformation should filter the data to show bulbasaur pokemon only.
-         """)]}
-    )    
+        {"messages": [HumanMessage(content="I want to extract the data from the API endpoint 'https://corporate.walmart.com/privacy-security/walmart-privacy-notice' and save it to data/extract folder in the csv folder")]}
+    )
+
+    # response = etl_analyst.invoke(
+    #      {"messages":[HumanMessage(content=f"""
+    #         I want to transform the data stored in the 'C:\\js\\genAI\\dataAgent\\data\\extract\\extracted_data.csv' file 
+    #         and save the transformed data in the 'C:\\js\\genAI\\dataAgent\\data\\transform' folder in the csv format.
+    #         The transformation should filter the data to show bulbasaur pokemon only.
+    #      """)]}
+    # )    
 
     print(response)

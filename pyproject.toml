@@ -6,8 +6,10 @@ readme = "README.md"
 authors = [
     { name = "navneetpathak1", email = "navneetpathak1909@gmail.com" }
 ]
+
 requires-python = ">=3.13"
 dependencies = [
+    "beautifulsoup4>=4.15.0",
     "dotenv>=0.9.9",
     "faiss-cpu>=1.15.1",
     "fastmcp>=4.0.5",
@@ -21,12 +23,14 @@ dependencies = [
     "langchain-openai>=1.6.2",
     "langchain-text-splitters>=1.1.2",
     "langgraph>=1.2.11",
+    "langsmith>=0.13.0",
     "pandas>=3.0.5",
     "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.5",
     "pypdf>=6.19.0",
     "python-dotenv>=1.2.3",
     "questions>=0.8.0",
+    "rank-bm25>=0.2.2",
     "sentence-transformers>=6.1.0",
     "typesafe-sdk>=0.7.1",
 ]

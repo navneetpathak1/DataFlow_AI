@@ -3,6 +3,7 @@ import csv
 import psycopg2
 from psycopg2 import sql
 from dotenv import load_dotenv
+
 load_dotenv()
 
 if 'port' not in os.environ:
@@ -20,7 +21,8 @@ DB_CONFIG = {
     "password": os.environ['password'],
 }
 
-CSV_DIR = "data"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_DIR = os.path.join(BASE_DIR, "datas", "csv")
 
 
 # ============================================================
@@ -44,137 +46,82 @@ create_tables_sql = """
 CREATE SCHEMA IF NOT EXISTS public;
 
 -- =========================================================
--- USERS
+-- STORE
 -- =========================================================
 
-CREATE TABLE IF NOT EXISTS public.users (
-    user_id INTEGER PRIMARY KEY,
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    phone VARCHAR(50),
-    city VARCHAR(100),
-    province VARCHAR(50),
-    user_type VARCHAR(20) NOT NULL,
-    signup_date DATE,
-    is_active BOOLEAN
+CREATE TABLE IF NOT EXISTS public.store (
+    store_id INT PRIMARY KEY,
+    store_name VARCHAR(100) NOT NULL UNIQUE
 );
 
 
 -- =========================================================
--- VEHICLES
+-- EMPLOYEE
 -- =========================================================
 
-CREATE TABLE IF NOT EXISTS public.vehicles (
-    vehicle_id INTEGER PRIMARY KEY,
-    driver_id INTEGER NOT NULL,
-    make VARCHAR(50),
-    model VARCHAR(50),
-    year INTEGER,
-    license_plate VARCHAR(20) UNIQUE,
-    color VARCHAR(30),
-    is_active BOOLEAN,
+CREATE TABLE IF NOT EXISTS public.employee (
+    employee_id INT PRIMARY KEY,
+    employee_name VARCHAR(100) NOT NULL,
+    store_id INT NOT NULL,
+    salary NUMERIC(10, 2) NOT NULL
+        CHECK (salary >= 0),
+    age INT NOT NULL
+        CHECK (age >= 18),
+    working_years INT NOT NULL
+        CHECK (working_years >= 0),
 
-    CONSTRAINT fk_vehicle_driver
-        FOREIGN KEY (driver_id)
-        REFERENCES public.users(user_id)
+    CONSTRAINT fk_employee_store
+        FOREIGN KEY (store_id)
+        REFERENCES public.store(store_id)
 );
 
 
 -- =========================================================
--- RIDES
+-- CUSTOMERS
 -- =========================================================
 
-CREATE TABLE IF NOT EXISTS public.rides (
-    ride_id INTEGER PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS public.customers (
+    customer_id INT PRIMARY KEY,
+    customer_name VARCHAR(100) NOT NULL,
+    product_bought VARCHAR(150) NOT NULL,
+    price NUMERIC(12, 2) NOT NULL
+        CHECK (price >= 0),
 
-    rider_id INTEGER NOT NULL,
-    driver_id INTEGER NOT NULL,
-
-    requested_at TIMESTAMP,
-    pickup_time TIMESTAMP,
-    dropoff_time TIMESTAMP,
-
-    pickup_latitude DECIMAL(9,6),
-    pickup_longitude DECIMAL(9,6),
-
-    dropoff_latitude DECIMAL(9,6),
-    dropoff_longitude DECIMAL(9,6),
-
-    distance_km DECIMAL(10,2),
-    fare DECIMAL(10,2),
-    surge_multiplier DECIMAL(4,2),
-
-    status VARCHAR(30),
-    cancellation_reason VARCHAR(100),
-
-    CONSTRAINT fk_ride_rider
-        FOREIGN KEY (rider_id)
-        REFERENCES public.users(user_id),
-
-    CONSTRAINT fk_ride_driver
-        FOREIGN KEY (driver_id)
-        REFERENCES public.users(user_id)
+    month VARCHAR(15) NOT NULL
+        CHECK (
+            month IN (
+                'January', 'February', 'March', 'April',
+                'May', 'June', 'July', 'August',
+                'September', 'October', 'November', 'December'
+            )
+        )
 );
 
 
 -- =========================================================
--- PAYMENTS
+-- SALES
 -- =========================================================
 
-CREATE TABLE IF NOT EXISTS public.payments (
-    payment_id INTEGER PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS public.sales (
+    sales_id INT PRIMARY KEY,
+    product VARCHAR(150) NOT NULL,
+    money NUMERIC(14, 2) NOT NULL
+        CHECK (money >= 0),
 
-    ride_id INTEGER NOT NULL,
-    user_id INTEGER NOT NULL,
+    month VARCHAR(15) NOT NULL
+        CHECK (
+            month IN (
+                'January', 'February', 'March', 'April',
+                'May', 'June', 'July', 'August',
+                'September', 'October', 'November', 'December'
+            )
+        ),
 
-    amount DECIMAL(10,2),
+    store_id INT NOT NULL,
 
-    payment_method VARCHAR(50),
-    payment_status VARCHAR(30),
-
-    transaction_id VARCHAR(100) UNIQUE,
-    payment_time TIMESTAMP,
-
-    CONSTRAINT fk_payment_ride
-        FOREIGN KEY (ride_id)
-        REFERENCES public.rides(ride_id),
-
-    CONSTRAINT fk_payment_user
-        FOREIGN KEY (user_id)
-        REFERENCES public.users(user_id)
-);
-
-
--- =========================================================
--- RATINGS
--- =========================================================
-
-CREATE TABLE IF NOT EXISTS public.ratings (
-    rating_id INTEGER PRIMARY KEY,
-
-    ride_id INTEGER NOT NULL,
-    rider_id INTEGER NOT NULL,
-    driver_id INTEGER NOT NULL,
-
-    rating INTEGER,
-    comment TEXT,
-    rated_at TIMESTAMP,
-
-    CONSTRAINT fk_rating_ride
-        FOREIGN KEY (ride_id)
-        REFERENCES public.rides(ride_id),
-
-    CONSTRAINT fk_rating_rider
-        FOREIGN KEY (rider_id)
-        REFERENCES public.users(user_id),
-
-    CONSTRAINT fk_rating_driver
-        FOREIGN KEY (driver_id)
-        REFERENCES public.users(user_id),
-
-    CONSTRAINT chk_rating
-        CHECK (rating BETWEEN 1 AND 5)
+    CONSTRAINT fk_sales_store
+        FOREIGN KEY (store_id)
+        REFERENCES public.store(store_id)
 );
 
 
@@ -182,32 +129,17 @@ CREATE TABLE IF NOT EXISTS public.ratings (
 -- INDEXES
 -- =========================================================
 
-CREATE INDEX IF NOT EXISTS idx_vehicles_driver_id
-ON public.vehicles(driver_id);
+CREATE INDEX IF NOT EXISTS idx_employee_store_id
+ON public.employee(store_id);
 
-CREATE INDEX IF NOT EXISTS idx_rides_rider_id
-ON public.rides(rider_id);
+CREATE INDEX IF NOT EXISTS idx_sales_store_id
+ON public.sales(store_id);
 
-CREATE INDEX IF NOT EXISTS idx_rides_driver_id
-ON public.rides(driver_id);
+CREATE INDEX IF NOT EXISTS idx_sales_month
+ON public.sales(month);
 
-CREATE INDEX IF NOT EXISTS idx_rides_requested_at
-ON public.rides(requested_at);
-
-CREATE INDEX IF NOT EXISTS idx_rides_status
-ON public.rides(status);
-
-CREATE INDEX IF NOT EXISTS idx_payments_ride_id
-ON public.payments(ride_id);
-
-CREATE INDEX IF NOT EXISTS idx_payments_user_id
-ON public.payments(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_ratings_ride_id
-ON public.ratings(ride_id);
-
-CREATE INDEX IF NOT EXISTS idx_ratings_driver_id
-ON public.ratings(driver_id);
+CREATE INDEX IF NOT EXISTS idx_customers_month
+ON public.customers(month);
 
 """
 
@@ -220,19 +152,17 @@ print("Tables created successfully")
 # OPTIONAL: CLEAR EXISTING DATA
 # ============================================================
 
-# Uncomment this section if you want every execution
-# to completely reload the CSV data.
+# Uncomment this block if you want to reload CSV data
+# from scratch on every execution.
 
-
-cursor.execute("""
-    TRUNCATE TABLE
-        public.ratings,
-        public.payments,
-        public.rides,
-        public.vehicles,
-        public.users
-    CASCADE;
-""")
+# cursor.execute("""
+#     TRUNCATE TABLE
+#         public.employee,
+#         public.customers,
+#         public.sales,
+#         public.store
+#     CASCADE;
+# """)
 
 
 
@@ -281,109 +211,67 @@ def load_csv(table_name, csv_file, columns):
 
 
 # ============================================================
-# LOAD USERS
+# LOAD STORE
 # ============================================================
 
 load_csv(
-    "users",
-    "users.csv",
+    "store",
+    "Store.csv",
     [
-        "user_id",
-        "first_name",
-        "last_name",
-        "email",
-        "phone",
-        "city",
-        "province",
-        "user_type",
-        "signup_date",
-        "is_active",
+        "store_id",
+        "store_name",
     ],
 )
 
 
 # ============================================================
-# LOAD VEHICLES
+# LOAD EMPLOYEE
 # ============================================================
 
 load_csv(
-    "vehicles",
-    "vehicles.csv",
+    "employee",
+    "Employee.csv",
     [
-        "vehicle_id",
-        "driver_id",
-        "make",
-        "model",
-        "year",
-        "license_plate",
-        "color",
-        "is_active",
+        "employee_id",
+        "employee_name",
+        "store_id",
+        "salary",
+        "age",
+        "working_years",
     ],
 )
 
 
 # ============================================================
-# LOAD RIDES
+# LOAD CUSTOMERS
 # ============================================================
 
 load_csv(
-    "rides",
-    "rides.csv",
+    "customers",
+    "Customers.csv",
     [
-        "ride_id",
-        "rider_id",
-        "driver_id",
-        "requested_at",
-        "pickup_time",
-        "dropoff_time",
-        "pickup_latitude",
-        "pickup_longitude",
-        "dropoff_latitude",
-        "dropoff_longitude",
-        "distance_km",
-        "fare",
-        "surge_multiplier",
-        "status",
-        "cancellation_reason",
+        "customer_id",
+        "customer_name",
+        "product_bought",
+        "price",
+        "month",
     ],
 )
 
 
 # ============================================================
-# LOAD PAYMENTS
+# LOAD SALES
 # ============================================================
 
 load_csv(
-    "payments",
-    "payments.csv",
+    "sales",
+    "Sales.csv",
     [
-        "payment_id",
-        "ride_id",
-        "user_id",
-        "amount",
-        "payment_method",
-        "payment_status",
-        "transaction_id",
-        "payment_time",
-    ],
-)
-
-
-# ============================================================
-# LOAD RATINGS
-# ============================================================
-
-load_csv(
-    "ratings",
-    "ratings.csv",
-    [
-        "rating_id",
-        "ride_id",
-        "rider_id",
-        "driver_id",
-        "rating",
-        "comment",
-        "rated_at",
+        "sales_id",
+        "product",
+        "money",
+        "month",
+        "store_id",
     ],
 )
 
@@ -393,11 +281,10 @@ load_csv(
 # ============================================================
 
 tables = [
-    "users",
-    "vehicles",
-    "rides",
-    "payments",
-    "ratings",
+    "store",
+    "employee",
+    "customers",
+    "sales",
 ]
 
 print("\nRecord counts:")
@@ -436,4 +323,4 @@ print("Transaction committed.")
 cursor.close()
 conn.close()
 
-print("PostgreSQL connection closed.")
+print("PostgreSQL connection closed.")

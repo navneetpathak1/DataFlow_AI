@@ -64,6 +64,9 @@ class DataAgentHandler(BaseHTTPRequestHandler):
                 data = json.loads(body) if body else {}
 
                 question = data.get("question", "").strip()
+                require_approval = bool(data.get("require_approval", False))
+                approval_decision = data.get("approval_decision", None)
+
                 if not question:
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json")
@@ -72,14 +75,16 @@ class DataAgentHandler(BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps({"success": False, "error": "Question cannot be empty"}).encode("utf-8"))
                     return
 
-                print(f"\n[DataAgent Server] Processing query: {question}")
+                print(f"\n[DataAgent Server] Processing query: {question} (Require HITL: {require_approval})")
                 start_time = datetime.now()
 
                 # Invoke DataAgent
                 response = data_agent.invoke(
                     {
                         "messages": [HumanMessage(content=question)],
-                        "route_response": ""
+                        "route_response": "",
+                        "require_approval": require_approval,
+                        "approval_decision": approval_decision
                     }
                 )
 
@@ -91,6 +96,8 @@ class DataAgentHandler(BaseHTTPRequestHandler):
                 content = last_msg.content if last_msg and hasattr(last_msg, "content") else str(last_msg)
 
                 route_response = getattr(response, "route_response", "") or (response.get("route_response") if isinstance(response, dict) else "")
+                needs_approval = bool(getattr(response, "needs_approval", False) if hasattr(response, "needs_approval") else response.get("needs_approval", False))
+                approval_data = getattr(response, "approval_data", None) if hasattr(response, "approval_data") else response.get("approval_data", None)
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -101,12 +108,14 @@ class DataAgentHandler(BaseHTTPRequestHandler):
                     "success": True,
                     "route": route_response,
                     "result": content,
+                    "needs_approval": needs_approval,
+                    "approval_data": approval_data,
                     "elapsedSeconds": round(elapsed, 2),
                     "timestamp": datetime.now().isoformat()
                 }
 
                 self.wfile.write(json.dumps(result_payload).encode("utf-8"))
-                print(f"[DataAgent Server] Query resolved in {elapsed:.2f}s (Route: {route_response})")
+                print(f"[DataAgent Server] Query resolved in {elapsed:.2f}s (Route: {route_response}, Needs Approval: {needs_approval})")
 
             except Exception as e:
                 traceback.print_exc()
@@ -115,12 +124,89 @@ class DataAgentHandler(BaseHTTPRequestHandler):
                 self._set_cors_headers()
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+
+        elif self.path == "/api/approve-sql":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length).decode("utf-8")
+                data = json.loads(body) if body else {}
+
+                decision = str(data.get("decision", "denied")).strip().lower()
+                sql_query = data.get("sql_query", "").strip()
+                user_question = data.get("user_question", "").strip()
+                curated_ques = data.get("curated_ques", user_question).strip()
+
+                print(f"\n[DataAgent Server] HITL Decision received: {decision.upper()} for query:\n{sql_query}")
+                start_time = datetime.now()
+
+                from agents.sql_analyst import execute_sql, represent_final_answer
+                from models.schema import AgentSchema
+
+                state = AgentSchema(
+                    messages=[],
+                    user_question=user_question or "Execute approved query",
+                    curated_ques=curated_ques or user_question or "Execute approved query",
+                    prompt_query_context="",
+                    generated_sql_query=sql_query,
+                    is_safe="Yes" if decision in ["approve", "approved", "yes", "y"] else "No",
+                    comments=f"Decision '{decision}' provided by human operator via UI.",
+                    sql_query_execution_result="",
+                    final_answer="",
+                    approval_decision=decision,
+                    needs_approval=False,
+                    require_approval=False
+                )
+
+                if decision in ["approve", "approved", "yes", "y"]:
+                    state = execute_sql(state)
+                    state = represent_final_answer(state)
+                    status_text = "Query approved and executed successfully."
+                else:
+                    state.final_answer = (
+                        f"❌ The SQL execution was denied by human operator.\n\n"
+                        f"Query that was canceled:\n```sql\n{sql_query}\n```\n"
+                        "No database changes were executed."
+                    )
+                    status_text = "Query execution denied by human operator."
+
+                elapsed = (datetime.now() - start_time).total_seconds()
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors_headers()
+                self.end_headers()
+
+                payload = {
+                    "success": True,
+                    "route": "sql",
+                    "decision": decision,
+                    "status_text": status_text,
+                    "sql_query": sql_query,
+                    "execution_result": state.sql_query_execution_result,
+                    "result": state.final_answer,
+                    "needs_approval": False,
+                    "elapsedSeconds": round(elapsed, 2),
+                    "timestamp": datetime.now().isoformat()
+                }
+
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
+                print(f"[DataAgent Server] HITL Action finalized ({decision}) in {elapsed:.2f}s")
+
+            except Exception as e:
+                traceback.print_exc()
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+
         else:
             self.send_response(404)
             self.send_header("Content-Type", "application/json")
             self._set_cors_headers()
             self.end_headers()
             self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode("utf-8"))
+
 
     def log_message(self, format, *args):
         # Custom clean logging
