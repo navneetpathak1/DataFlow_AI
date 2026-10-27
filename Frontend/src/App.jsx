@@ -20,6 +20,7 @@ import {
   Edit3,
   Play
 } from 'lucide-react';
+import ArchitectureSection from './components/ArchitectureSection';
 
 const PRESETS = [
   {
@@ -194,7 +195,7 @@ export default function App() {
       }
 
       setResponse(data);
-      setToastMessage('✅ Query executed and answer synthesized!');
+      setToastMessage(' Query executed and answer synthesized!');
       setTimeout(() => setToastMessage(null), 4000);
     } catch (err) {
       console.error(err);
@@ -273,10 +274,6 @@ export default function App() {
             <span className="brand-title">DataAgent</span>
             <div className="brand-subtitle">
               <span>Autonomous Multi-Agent Platform</span>
-              <span className={`status-badge ${isBackendOnline === false ? 'offline' : ''}`}>
-                <span className="status-dot" />
-                {isBackendOnline === true ? 'Backend Online' : isBackendOnline === false ? 'Backend Offline' : 'Checking...'}
-              </span>
             </div>
           </div>
         </div>
@@ -302,6 +299,9 @@ export default function App() {
             <span>{toastMessage}</span>
           </div>
         )}
+
+        {/* System Architecture Section */}
+        <ArchitectureSection />
 
         {/* Preset Queries Section */}
         <section className="presets-container">
